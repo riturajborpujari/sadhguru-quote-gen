@@ -3,17 +3,34 @@
     <head>
         <title>Sadhguru Daily Quote</title>
     </head>
+    <body>
+        <div id="main_container" class="main_container">
+            <div id="image_container" class="image_container">
+                <img src="screenshot.png" alt="sadhguru photo"/>
+            </div>
+            <div id="quote_container" class="quote_container">
+                <p>paragraph</p>
+            </div>
+        </div>
+    </body>
     <style>
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
     body {
         background-color: #00001a;
         font-family: sans-serif;
         margin: 0;
         padding: 0;
-        display: block
+		height: 100vh;
     }
 
     .main_container {
         margin: 200px 20px 0px 20px;
+		height: 100%;
+		width: 100%;
         display: block;
     }
 
@@ -44,16 +61,6 @@
     }
 
     </style>
-    <body>
-        <div id="main_container" class="main_container">
-            <div id="image_container" class="image_container">
-                <img src="screenshot.png" alt="sadhguru photo"/>
-            </div>
-            <div id="quote_container" class="quote_container">
-                <p>paragraph</p>
-            </div>
-        </div>
-    </body>
 </html>
 
 

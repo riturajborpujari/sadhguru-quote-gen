@@ -1,0 +1,32 @@
+{
+  "name": "SadhguruQuoteGen",
+  "version": "1.0.0",
+  "description": "Generate Wallpaper from Sadhguru Quotes",
+  "main": "src/index.js",
+  "dependencies": {
+    "axios": "^1.14.0",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.3.1",
+    "fs.promises": "^0.1.2",
+    "puppeteer-core": "^24.40.0"
+  },
+  "scripts": {
+    "start-chrome": "PUPPETEER_BROWSER=chrome node src/index.js",
+    "start-firefox": "PUPPETEER_BROWSER=firefox node src/index.js",
+    "puppeteer-install-firefox": "npx puppeteer browsers install firefox",
+    "puppeteer-install-chrome": "npx puppeteer browsers install chrome"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Aditya Dey",
+    "url": "https://github.com/deyaditya34"
+  },
+  "contributors": [
+    {
+      "name": "Rituraj Borpujari",
+      "url": "https://github.com/riturajborpujari"
+    }
+  ],
+  "license": "MIT",
+  "type": "commonjs"
+}
