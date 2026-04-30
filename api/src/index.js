@@ -1,116 +1,150 @@
+const fs = require("node:fs/promises");
+const {execSync} = require("child_process");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const puppeteer = require("puppeteer");
-const fs = require("node:fs/promises");
 
 const config = require("./config.js");
 
-const templateFilePath = config.TEMPLATEFILEPATH;
-const updateTemplateFilePath = config.UPDATETEMPLATEFILEPATH;
-const outputWalpaperPath = config.OUTPUTWALPAPERPATH;
-const inputBrowserHTMLPath = config.INPUTBROWSERHTMLPATH;
+const monthNames = [ "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" ]
 
-async function start(date) {
+/**
+ * Hack: Parse out the Hero Image URL from the Page script
+ */
+async function parseHeroImageUrl(cheerioPageHtml)
+{
+	try {
+		// extracting the script '#__NEXT_DATA__' for parsing the image url
+		const pageScript = cheerioPageHtml("#__NEXT_DATA__").html();
+
+		// cleaning the invalid json in the script html for successful json parsing
+		const pageLinkDataStr = pageScript
+			.replace(/,\s*}/g, "}")
+			.replace(/,\s*]/g, "]")
+			.replace(/]\s*"\s*seoKeywords"/g, '], "seoKeywords"');
+
+		const pageLinkData = JSON.parse(pageLinkDataStr);
+		// parsing the image url from the json
+		return pageLinkData.props.pageProps.pageDataDetail.heroImage[0].value.url;
+    } catch (err) {
+		throw new Error(`ParseHeroImage failed: ${err.message}`);
+	}
+}
+
+async function loadImage(imageUrl)
+{
+	try {
+		const image           = await axios.get(imageUrl, { responseType: "arraybuffer" });
+		const imageBase64     = Buffer.from(image.data).toString("base64");
+		return imageBase64;
+	} catch (err) {
+		throw new Error(`LoadImage failed: ${err.message}`);
+	}
+}
+
+async function getQuoteInfo(date)
+{
 	try {
 		const url = `https://isha.sadhguru.org/en/wisdom/quotes/date/${date}`
+		const response = await axios.get(url);
 
-		const urlResponse = await axios.get(url);
+		const cheerioPageHtml = cheerio.load(response.data.toString());
+		const title           = cheerioPageHtml('.css-1cw0rco').text();
+		const imageUrl        = await parseHeroImageUrl(cheerioPageHtml);
 
-		const urlResponseData = urlResponse.data;
+		const imageBase64     = await loadImage(imageUrl);
 
-		// loading the html data to cheerio for parsing the html elements
-		const htmlLoad = cheerio.load(urlResponseData.toString());
-		// parsing the title from the html data;
-		const title = htmlLoad('.css-1cw0rco').text();
-
-		// extracting the script '#__NEXT_DATA__' for parsing the image url
-		const scriptHtml = htmlLoad("#__NEXT_DATA__").html();
-		
-		// cleaning the invalid json in the script html for successful json parsing
-		const parsedHtml = scriptHtml.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/]\s*"\s*seoKeywords"/g, '], "seoKeywords"');
-
-		const parsedHtmlJson = JSON.parse(parsedHtml);
-		// parsing the image url from the json
-		const imageUrl = parsedHtmlJson.props.pageProps.pageDataDetail.heroImage[0].value.url;
-
-		// fetching the image data from the image url
-		const imageDataResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
-		// encoded the image data to base64 to insert the data directly to the
-		// template file
-		const imageBase64 = Buffer.from(imageDataResponse.data).toString("base64");
-
-		// fetching the template file for upating the title and the image data. 
-		const data = await fs.readFile(templateFilePath);
-
-		// updating the template file data with the new title and the new image
-		// data.
-		const templateFileData = data.toString().replace("paragraph", title).replace("screenshot.png", `data:image/png;base64,${imageBase64}`);
-
-		// writing the updated data to a new template file for the browser to
-		// capture a screenshot
-		await fs.writeFile(updateTemplateFilePath, templateFileData)
-
-		//generating a screenshot of the new template file
-		const browser = await puppeteer.launch({ headless: true });
-		const page = await browser.newPage();
-		await page.goto(inputBrowserHTMLPath, { waitUntil: "load" });
-		await page.setViewport({ width: 1920, height: 1024 });
-		await page.screenshot({ path: outputWalpaperPath });
-		await browser.close();
+		return {
+			title,
+			imageBase64,
+		};
 	} catch (err) {
 		if (err.status === 404) {
-			return console.log(`"${date}" quote has not been generated yet. Please try with some other dates`)
+			throw new Error("GetQuoteInfo failed: Quote not generated! Try different date");
 		}
-		console.log("err in generating wallpaper -", err.message)
+		throw new Error(`GetQuoteInfo failed: ${err.message}`);
 	}
 }
 
-const months = {
-	0: "january",
-	1: "february",
-	2: "march",
-	3: "april",
-	4: "may",
-	5: "june",
-	6: "july",
-	7: "august",
-	8: "september",
-	9: "october",
-	10: "november",
-	11: "december"
-}
+async function buildHtmlFromTemplate(title, imageDataBase64)
+{
+	try {
+		const templateContents = await fs.readFile(config.TEMPLATE_FILEPATH, {encoding: "utf-8"});
 
-let currentDate = new Date(Date.now());
+		// hydrate template placeholders with relevant values
+		const templateFileData = templateContents
+			.replace("paragraph", title)
+			.replace("screenshot.png", `data:image/png;base64,${imageDataBase64}`);
 
-let date;
-let month;
-let year;
+		// store the HTML file built from the template
+		const outputPath = "/tmp/sadhguru-quote-gen-output.html";
+		await fs.writeFile(outputPath, templateFileData)
 
-const userInput = process.argv[2];
-
-function parseDateFromArgv(userInput) {
-	if (!userInput || Number.isNaN(Number(userInput)) || userInput.length > 8 || userInput.length < 8) {
-		date = currentDate.getDate();
-		month = months[currentDate.getMonth()];
-		year = currentDate.getFullYear();
-
-		if (date <= 9) {
-			date = `0${date.toString()}`
-		}
-	}
-	else {
-		date = userInput.slice(0, 2);
-		if (userInput[2] === "0") {
-			month = months[userInput.slice(3, 4) - 1]
-		} else {
-			month = months[userInput.slice(2, 4) - 1];
-		}
-		year = userInput.slice(4, 8);
+		return outputPath;
+	} catch (err) {
+		throw new Error(`BuildHtmlFromTemplate failed: ${err.message}`);
 	}
 }
 
-parseDateFromArgv(userInput);
+async function screenshotHtml(htmlFilepath, width, height)
+{
+	try {
+		const screenshotPath = "/tmp/sadhguru-quote-gen-screenshot.png";
+		const browser = await puppeteer.launch({ headless: true });
+		const page = await browser.newPage();
+		await page.goto(htmlFilepath, { waitUntil: "load" });
+		await page.setViewport({ width, height });
+		await page.screenshot({ path: screenshotPath });
+		await browser.close();
+		return screenshotPath;
+	} catch (err) {
+		throw new Error(`ScreenshotHtml failed: ${err.message}`);
+	}
+}
 
-let parsed_date = `${month}-${date}-${year}`;
+function parseDate(userInput)
+{
+	if (userInput) {
+		const [year, monthNum, date] = userInput.split("-").map(el => Number(el));
+		const month = monthNames[monthNum - 1];
+		if (!year || year < 0) {
+			throw new Error(`ParseDate failed: ${userInput}: Invalid year value`);
+		}
+		if (!monthNum || monthNum < 1 || monthNum > 12) {
+			throw new Error(`ParseDate failed: ${userInput}: Invalid month value`);
+		}
+		if (!date || date < 1 || date > 31) {
+			throw new Error(`ParseDate failed: ${userInput}: Invalid date value`);
+		}
 
-start(parsed_date);
+		return `${month}-${date}-${year}`;
+	}
+
+	let currentDate = new Date();
+	let date = currentDate.getDate();
+	let month = monthNames[currentDate.getMonth()];
+	let year = currentDate.getFullYear();
+	if (date <= 9) {
+		date = `0${date.toString()}`
+	}
+	return `${month}-${date}-${year}`;
+}
+
+async function start()
+{
+	try {
+		const inputDate				 = parseDate(process.argv[2]);
+		const { title, imageBase64 } = await getQuoteInfo(inputDate);
+		const htmlFilepath			 = await buildHtmlFromTemplate(title, imageBase64);
+		const screenshotPath         = await screenshotHtml(`file://${htmlFilepath}`, config.WALLPAPER_WIDTH, config.WALLPAPER_HEIGHT);
+
+		const afterCommand			 = config.AFTER_COMMAND.replace("{}", screenshotPath);
+		const execCommand  			 = `sh -c "${afterCommand}"`;
+
+		execSync(execCommand, { stdio: "ignore" });
+	} catch (err) {
+		console.log(`SadhguruWallpaperGen failed: ${err.message}`);
+	}
+}
+
+start();
