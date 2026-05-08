@@ -6,6 +6,8 @@ const config = {
 	WALLPAPER_WIDTH: Number(process.env.WALLPAPER_WIDTH) || 1920,
 	WALLPAPER_HEIGHT: Number(process.env.WALLPAPER_HEIGHT) || 1080,
 	AFTER_COMMAND: process.env.AFTER_COMMAND || "cp {} ~",
+	BROWSER: process.env.BROWSER,
+	BROWSER_EXECUTABLE_PATH: process.env.BROWSER_EXECUTABLE_PATH,
 }
 
 if (!fs.existsSync(config.TEMPLATE_FILEPATH)) {

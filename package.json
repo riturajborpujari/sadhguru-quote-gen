@@ -11,10 +11,7 @@
     "puppeteer-core": "^24.40.0"
   },
   "scripts": {
-    "start-chrome": "PUPPETEER_BROWSER=chrome node src/index.js",
-    "start-firefox": "PUPPETEER_BROWSER=firefox node src/index.js",
-    "puppeteer-install-firefox": "npx puppeteer browsers install firefox",
-    "puppeteer-install-chrome": "npx puppeteer browsers install chrome"
+    "start": "node src/index.js"
   },
   "keywords": [],
   "author": {

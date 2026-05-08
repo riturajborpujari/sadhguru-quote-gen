@@ -1,18 +1,17 @@
 const fs = require("node:fs/promises");
-const {execSync} = require("child_process");
+const { execSync } = require("child_process");
 const axios = require("axios");
 const cheerio = require("cheerio");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 
 const config = require("./config.js");
 
-const monthNames = [ "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december" ]
+const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 /**
  * Hack: Parse out the Hero Image URL from the Page script
  */
-async function parseHeroImageUrl(cheerioPageHtml)
-{
+async function parseHeroImageUrl(cheerioPageHtml) {
 	try {
 		// extracting the script '#__NEXT_DATA__' for parsing the image url
 		const pageScript = cheerioPageHtml("#__NEXT_DATA__").html();
@@ -26,33 +25,31 @@ async function parseHeroImageUrl(cheerioPageHtml)
 		const pageLinkData = JSON.parse(pageLinkDataStr);
 		// parsing the image url from the json
 		return pageLinkData.props.pageProps.pageDataDetail.heroImage[0].value.url;
-    } catch (err) {
+	} catch (err) {
 		throw new Error(`ParseHeroImage failed: ${err.message}`);
 	}
 }
 
-async function loadImage(imageUrl)
-{
+async function loadImage(imageUrl) {
 	try {
-		const image           = await axios.get(imageUrl, { responseType: "arraybuffer" });
-		const imageBase64     = Buffer.from(image.data).toString("base64");
+		const image = await axios.get(imageUrl, { responseType: "arraybuffer" });
+		const imageBase64 = Buffer.from(image.data).toString("base64");
 		return imageBase64;
 	} catch (err) {
 		throw new Error(`LoadImage failed: ${err.message}`);
 	}
 }
 
-async function getQuoteInfo(date)
-{
+async function getQuoteInfo(date) {
 	try {
 		const url = `https://isha.sadhguru.org/en/wisdom/quotes/date/${date}`
 		const response = await axios.get(url);
 
 		const cheerioPageHtml = cheerio.load(response.data.toString());
-		const title           = cheerioPageHtml('.css-1cw0rco').text();
-		const imageUrl        = await parseHeroImageUrl(cheerioPageHtml);
+		const title = cheerioPageHtml('.css-1cw0rco').text();
+		const imageUrl = await parseHeroImageUrl(cheerioPageHtml);
 
-		const imageBase64     = await loadImage(imageUrl);
+		const imageBase64 = await loadImage(imageUrl);
 
 		return {
 			title,
@@ -66,10 +63,9 @@ async function getQuoteInfo(date)
 	}
 }
 
-async function buildHtmlFromTemplate(title, imageDataBase64)
-{
+async function buildHtmlFromTemplate(title, imageDataBase64) {
 	try {
-		const templateContents = await fs.readFile(config.TEMPLATE_FILEPATH, {encoding: "utf-8"});
+		const templateContents = await fs.readFile(config.TEMPLATE_FILEPATH, { encoding: "utf-8" });
 
 		// hydrate template placeholders with relevant values
 		const templateFileData = templateContents
@@ -86,11 +82,14 @@ async function buildHtmlFromTemplate(title, imageDataBase64)
 	}
 }
 
-async function screenshotHtml(htmlFilepath, width, height)
-{
+async function screenshotHtml(htmlFilepath, width, height) {
 	try {
 		const screenshotPath = "/tmp/sadhguru-quote-gen-screenshot.png";
-		const browser = await puppeteer.launch({ headless: true });
+		const browser = await puppeteer.launch({
+			headless: false,
+			browser: config.BROWSER,
+			executablePath: config.BROWSER_EXECUTABLE_PATH,
+		});
 		const page = await browser.newPage();
 		await page.goto(htmlFilepath, { waitUntil: "load" });
 		await page.setViewport({ width, height });
@@ -102,25 +101,12 @@ async function screenshotHtml(htmlFilepath, width, height)
 	}
 }
 
-function parseDate(userInput)
-{
+function parseDate(userInput) {
+	let currentDate = new Date();
 	if (userInput) {
-		const [year, monthNum, date] = userInput.split("-").map(el => Number(el));
-		const month = monthNames[monthNum - 1];
-		if (!year || year < 0) {
-			throw new Error(`ParseDate failed: ${userInput}: Invalid year value`);
-		}
-		if (!monthNum || monthNum < 1 || monthNum > 12) {
-			throw new Error(`ParseDate failed: ${userInput}: Invalid month value`);
-		}
-		if (!date || date < 1 || date > 31) {
-			throw new Error(`ParseDate failed: ${userInput}: Invalid date value`);
-		}
-
-		return `${month}-${date}-${year}`;
+		currentDate = new Date(userInput);
 	}
 
-	let currentDate = new Date();
 	let date = currentDate.getDate();
 	let month = monthNames[currentDate.getMonth()];
 	let year = currentDate.getFullYear();
@@ -130,16 +116,15 @@ function parseDate(userInput)
 	return `${month}-${date}-${year}`;
 }
 
-async function start()
-{
+async function start() {
 	try {
-		const inputDate				 = parseDate(process.argv[2]);
+		const inputDate = parseDate(process.argv[2]);
 		const { title, imageBase64 } = await getQuoteInfo(inputDate);
-		const htmlFilepath			 = await buildHtmlFromTemplate(title, imageBase64);
-		const screenshotPath         = await screenshotHtml(`file://${htmlFilepath}`, config.WALLPAPER_WIDTH, config.WALLPAPER_HEIGHT);
+		const htmlFilepath = await buildHtmlFromTemplate(title, imageBase64);
+		const screenshotPath = await screenshotHtml(`file://${htmlFilepath}`, config.WALLPAPER_WIDTH, config.WALLPAPER_HEIGHT);
 
-		const afterCommand			 = config.AFTER_COMMAND.replace("{}", screenshotPath);
-		const execCommand  			 = `sh -c "${afterCommand}"`;
+		const afterCommand = config.AFTER_COMMAND.replace("{}", screenshotPath);
+		const execCommand = `sh -c "${afterCommand}"`;
 
 		execSync(execCommand, { stdio: "ignore" });
 	} catch (err) {
